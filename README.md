@@ -94,15 +94,17 @@ Alerts start in practice mode, which logs messages without sending anything. To 
 
 ## Testing the camera
 
+**Where the camera sits matters more than anything else here.** A laptop on a table sees head and shoulders, which is enough to notice someone sitting at it or sliding out of frame, but not walking or someone lying on the floor. To see those, put the camera high up and far enough back to see the whole body and the floor, like on a shelf or with a USB webcam.
+
 Live mode needs the consent setting, so create a config first if you don't have one. Alerts stay in practice mode, so nothing is really sent.
 
 ```bash
 cp config.example.toml config.toml
 sed -i 's/monitored_person_consented = false/monitored_person_consented = true/' config.toml
-.venv/bin/python -m elder_help run --no-audio
+.venv/bin/python -m elder_help camera-check
 ```
 
-Open <http://127.0.0.1:8765> and stand far enough back that your whole body is in frame. Remove `--no-audio` to hear the check-ins too.
+It speaks each pose, measures it and prints how often it got each one right. It saves numbers to `camera_check.json`, never images. To watch it live, use `run --no-audio` and open <http://127.0.0.1:8765>.
 
 ## Privacy and consent
 
@@ -115,7 +117,7 @@ Open <http://127.0.0.1:8765> and stand far enough back that your whole body is i
 
 - **Thresholds are unvalidated.** Timings and angles are hand-chosen starting values. They live in `Thresholds` and `config.toml`, and need testing with the actual person and room.
 - **The camera must see them.** A dark room, another room, or a blanket can hide a fall. Lying with feet pointing at the camera can look upright.
-- **Desk webcams see less.** With only head and shoulders in view, it reports "upright" rather than standing, walking or running, and leg-based checks don't work.
+- **Desk webcams see less.** With only head and shoulders in view, sitting is inferred from where the shoulders are in the frame, so someone standing very close could read as sitting. It won't report walking, and someone lying on the floor is out of view. Dropping out of the bottom of the frame counts as a possible fall, and bending down for a while can trigger that check too.
 - **One person at a time.** A visitor in frame can be tracked instead.
 - **Some English is harder to catch.** Hindi commands were recognised far more reliably in testing, and "alert my family" was often missed in English. Saying "help" works instead. Names may need adding as `aliases`.
 - **Chat can be wrong.** It is a small local model. It is company, not a source of facts or health advice.

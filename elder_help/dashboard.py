@@ -30,10 +30,10 @@ ol{list-style:none;padding:0;margin:12px 0 0;font-size:14px}li{padding:6px 0;bor
 const $=id=>document.getElementById(id);
 const post=p=>fetch(p,{method:'POST'});
 async function tick(){try{const s=await (await fetch('/state')).json();
-$('activity').textContent=s.activity+(s.object?' · using '+s.object:'');
+$('activity').textContent=(s.activity==='upright'?'upper body only':s.activity)+(s.object?' · using '+s.object:'');
 $('phase').textContent=s.phase==='watching'?'Watching':s.phase+': '+(s.reason||'').replaceAll('_',' ');
 $('phase').className=s.phase==='watching'?'':'alert';
-const b=[];if(!s.alerts_live)b.push('Practice mode: calls and texts are not being sent.');if(!s.camera_ok)b.push('Camera is not working.');$('banner').textContent=b.join(' ');
+const b=[];if(!s.alerts_live)b.push('Practice mode: calls and texts are not being sent.');if(!s.camera_ok)b.push('Camera is not working.');if(s.view==='head_and_shoulders'||s.view==='upper_body')b.push('The camera can only see part of the body, so it cannot detect walking or someone lying on the floor. Move it further back and higher up.');$('banner').textContent=b.join(' ');
 $('events').replaceChildren(...s.events.slice(0,12).map(e=>{const li=document.createElement('li'),t=document.createElement('time');t.textContent=e.time.slice(11);
 const {time,event,...rest}=e;li.append(t,event.replaceAll('_',' ')+' '+Object.values(rest).filter(v=>v!==null&&!(Array.isArray(v)&&!v.length)).join(', '));return li}))
 }catch(e){$('banner').textContent='Lost connection to the monitor.'}}

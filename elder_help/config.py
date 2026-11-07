@@ -49,6 +49,7 @@ class Config:
     camera_index: int = 0
     vision_delegate: str = "GPU"
     prefer_nvidia: bool = True
+    pose_model: str = "heavy"
     listen_for_help_words: bool = True
     sleep_hours: tuple[int, int] = (22, 7)
     camera_fault_s: float = 60
@@ -87,6 +88,7 @@ def load_config(path: str | Path) -> Config:
         camera_index=raw.pop("camera_index", 0),
         vision_delegate=raw.pop("vision_delegate", "GPU"),
         prefer_nvidia=raw.pop("prefer_nvidia", True),
+        pose_model=raw.pop("pose_model", "heavy"),
         listen_for_help_words=raw.pop("listen_for_help_words", True),
         sleep_hours=tuple(raw.pop("sleep_hours", (22, 7))),
         camera_fault_s=camera_fault_s,

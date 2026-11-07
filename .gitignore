@@ -9,3 +9,4 @@ config.toml
 events.jsonl
 # Where a real person keeps their things.
 memory.json
+camera_check.json

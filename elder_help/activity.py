@@ -16,11 +16,12 @@ L_KNEE, R_KNEE = 25, 26
 L_ANKLE, R_ANKLE = 27, 28
 
 MIN_VISIBILITY = 0.5
+FALL_CLEAR_S = 3.0
 
 
 class Activity(str, Enum):
     ABSENT = "absent"
-    UPRIGHT = "upright"  # Only the upper body is in view, so standing and sitting look alike.
+    UPRIGHT = "upright"  # Only the upper body is in view and it can't be told apart any further.
     STANDING = "standing"
     SITTING = "sitting"
     WALKING = "walking"
@@ -47,6 +48,12 @@ class Thresholds:
     absent_after_s: float = 3.0
     rise_attempt: float = 0.35
     attempts_for_struggle: int = 3
+    # A person at a laptop fills the frame with their shoulders low in it. Measured at a real desk:
+    # shoulders 40% of the frame width and 87% of the way down.
+    desk_shoulder_width: float = 0.2
+    desk_shoulder_height: float = 0.5
+    exit_drop: float = 0.12
+    change_after_s: float = 0.7
 
 
 @dataclass(frozen=True)
@@ -68,6 +75,7 @@ class Observation:
     in_bed: bool = False
     held_object: str | None = None
     torso_deg: float | None = None
+    came_back: bool = False  # Seen again after dropping out of frame, so it wasn't a fall.
 
 
 @dataclass(frozen=True)
@@ -78,6 +86,7 @@ class _Sample:
     shoulder_y: float
     torso: float
     leg_gap: float | None
+    full_torso: bool = True
 
 
 def _visible(points: np.ndarray, *indices: int) -> bool:
@@ -92,7 +101,20 @@ def _deg_from_vertical(dx: float, dy: float) -> float:
     return math.degrees(math.atan2(abs(dx), abs(dy)))
 
 
-def classify_posture(points: np.ndarray, th: Thresholds = Thresholds()) -> tuple[Activity, float | None]:
+def describe_view(points: np.ndarray | None) -> str:
+    """Says how much of the body the camera can see, which limits what can be detected."""
+    if points is None or not _visible(points, L_SHOULDER, R_SHOULDER):
+        return "nobody"
+    if not _visible(points, L_HIP, R_HIP):
+        return "head_and_shoulders"
+    if not (_visible(points, L_KNEE, R_KNEE) or _visible(points, L_ANKLE, R_ANKLE)):
+        return "upper_body"
+    return "full_body"
+
+
+def classify_posture(
+    points: np.ndarray, th: Thresholds = Thresholds(), frame_size: tuple[int, int] | None = None
+) -> tuple[Activity, float | None]:
     """Classifies one frame from pixel landmarks shaped (33, 3): x, y, visibility."""
     if not _visible(points, L_SHOULDER, R_SHOULDER):
         return Activity.ABSENT, None
@@ -108,6 +130,11 @@ def classify_posture(points: np.ndarray, th: Thresholds = Thresholds()) -> tuple
             line_deg = 90 - _deg_from_vertical(line[0], line[1])
             if head_deg >= th.lying_torso_deg and line_deg >= 45:
                 return Activity.LYING, head_deg
+        if frame_size is not None:
+            width, height = frame_size
+            shoulder_width = float(np.linalg.norm(points[L_SHOULDER, :2] - points[R_SHOULDER, :2]))
+            if shoulder_width / width >= th.desk_shoulder_width and shoulders[1] / height >= th.desk_shoulder_height:
+                return Activity.SITTING, None
         return Activity.UPRIGHT, None
 
     hips = _mid(points, L_HIP, R_HIP)
@@ -164,6 +191,9 @@ class ActivityTracker:
         self._fall_at: float | None = None
         self._rising = False
         self._attempts: deque[float] = deque()
+        self._candidate: Activity | None = None
+        self._candidate_since = 0.0
+        self._fell_out_of_view = False
 
     def update(
         self,
@@ -172,19 +202,29 @@ class ActivityTracker:
         frame_size: tuple[int, int] = (1, 1),
         held_object: str | None = None,
     ) -> Observation:
-        posture, torso_deg = (Activity.ABSENT, None) if points is None else classify_posture(points, self.th)
+        posture, torso_deg = (Activity.ABSENT, None) if points is None else classify_posture(
+            points, self.th, frame_size if frame_size != (1, 1) else None
+        )
         struggling = False
+        came_back = False
         if posture is not Activity.ABSENT:
             self._last_seen = t
             self._torso_deg = torso_deg
             self._record(points, posture, t, frame_size)
-            self._activity = self._smoothed_activity(t)
+            self._activity = self._settled(self._smoothed_activity(t), t)
+            if self._fell_out_of_view and posture is not Activity.LYING:
+                self._fell_out_of_view = False
+                self._fall_at = None
+                came_back = True
             self._detect_fall(t)
             struggling = self._detect_struggle(t)
-            if self._activity in UPRIGHT_ACTIVITIES:
+            # The label lags behind a fall, so only being upright well after it counts as recovery.
+            if self._activity in UPRIGHT_ACTIVITIES and self._fall_at is not None and t - self._fall_at >= FALL_CLEAR_S:
                 self._fall_at = None
         elif self._last_seen is None or t - self._last_seen >= self.th.absent_after_s:
+            self._detect_drop_out_of_view(frame_size)
             self._activity = Activity.ABSENT
+            self._candidate = None
             self._samples.clear()
         return Observation(
             activity=self._activity,
@@ -193,7 +233,32 @@ class ActivityTracker:
             in_bed=self._in_bed,
             held_object=held_object if self._activity is not Activity.ABSENT else None,
             torso_deg=self._torso_deg,
+            came_back=came_back,
         )
+
+    def _settled(self, activity: Activity, t: float) -> Activity:
+        """Holds the current label until a new one lasts, so it doesn't flicker every second."""
+        if activity is self._activity or self._activity is Activity.ABSENT:
+            self._candidate = None
+            return activity
+        if activity is not self._candidate:
+            self._candidate = activity
+            self._candidate_since = t
+        if t - self._candidate_since >= self.th.change_after_s:
+            self._candidate = None
+            return activity
+        return self._activity
+
+    def _detect_drop_out_of_view(self, frame_size: tuple[int, int]) -> None:
+        """A desk camera can't see the floor, so sliding out of the bottom of the frame is the signal."""
+        height = frame_size[1]
+        if height == 1 or self._last_seen is None or not self._samples or self._fall_at is not None:
+            return
+        recent = [s for s in self._samples if self._last_seen - s.t <= 1.5]
+        lowest = recent[-1].shoulder_y
+        if lowest / height >= 0.6 and (lowest - min(s.shoulder_y for s in recent)) / height >= self.th.exit_drop:
+            self._fall_at = self._last_seen
+            self._fell_out_of_view = True
 
     def _record(self, points: np.ndarray, posture: Activity, t: float, frame_size: tuple[int, int]) -> None:
         shoulders = _mid(points, L_SHOULDER, R_SHOULDER)
@@ -206,7 +271,9 @@ class ActivityTracker:
         leg_gap = None
         if _visible(points, L_ANKLE, R_ANKLE):
             leg_gap = float(points[L_ANKLE, 1] - points[R_ANKLE, 1]) / max(torso, 1e-3)
-        self._samples.append(_Sample(t, posture, (float(hips[0]), float(hips[1])), float(shoulders[1]), max(torso, 1e-3), leg_gap))
+        self._samples.append(
+            _Sample(t, posture, (float(hips[0]), float(hips[1])), float(shoulders[1]), max(torso, 1e-3), leg_gap, hips_visible)
+        )
         while self._samples and t - self._samples[0].t > 10.0:
             self._samples.popleft()
         width, height = frame_size
@@ -228,7 +295,8 @@ class ActivityTracker:
     def _with_movement(self, posture: Activity, t: float) -> Activity:
         recent = self._window(t, 2.0)
         span = recent[-1].t - recent[0].t
-        if span < 0.8:
+        # Leaning in a chair moves the shoulders too, so walking needs the hips in view.
+        if span < 0.8 or not all(s.full_torso for s in recent):
             return posture
         torso = float(np.median([s.torso for s in recent]))
         travelled = math.dist(recent[0].hip, recent[-1].hip)

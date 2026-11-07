@@ -40,11 +40,11 @@ def prefer_nvidia_gpu() -> bool:
 
 
 class VisionPipeline:
-    def __init__(self, detect_objects: bool = True, delegate: str = "GPU"):
+    def __init__(self, detect_objects: bool = True, delegate: str = "GPU", pose_model: str = "heavy"):
         accelerator = getattr(BaseOptions.Delegate, delegate)
         self._pose = vision.PoseLandmarker.create_from_options(
             vision.PoseLandmarkerOptions(
-                base_options=BaseOptions(model_asset_path=str(MODELS / "pose_landmarker_lite.task"), delegate=accelerator),
+                base_options=BaseOptions(model_asset_path=str(MODELS / f"pose_landmarker_{pose_model}.task"), delegate=accelerator),
                 running_mode=vision.RunningMode.VIDEO,
                 num_poses=1,
                 min_pose_detection_confidence=0.5,

@@ -9,6 +9,7 @@ monitored_person_consented = false
 
 camera_index = 0
 vision_delegate = "GPU"           # Or "CPU".
+pose_model = "heavy"              # "lite", "full" or "heavy". Use "lite" without a GPU.
 prefer_nvidia = true              # Set to false to save power on a laptop that stays on all day.
 listen_for_help_words = true      # Keeps the mic open; audio is processed locally and never saved.
 sleep_hours = [22, 7]             # Start and end hour, local time.

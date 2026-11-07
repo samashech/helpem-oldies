@@ -22,6 +22,8 @@ fetch_zip() {
 
 MEDIAPIPE=https://storage.googleapis.com/mediapipe-models
 fetch pose_landmarker_lite.task "$MEDIAPIPE/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+fetch pose_landmarker_full.task "$MEDIAPIPE/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task"
+fetch pose_landmarker_heavy.task "$MEDIAPIPE/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task"
 fetch efficientdet_lite0.tflite "$MEDIAPIPE/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite"
 
 fetch_zip vosk-model-small-hi-0.22

@@ -145,6 +145,9 @@ class SafetyMonitor:
         self._rest(now, self.cfg.reached_cooldown_s if reached else self.cfg.unreached_cooldown_s)
 
     def _track(self, obs: Observation, now: float) -> None:
+        if obs.came_back:
+            self._pending_fall = None
+            self._down_since = None
         if obs.fall_at is not None and obs.fall_at not in (self._pending_fall, self._handled_fall):
             self._pending_fall = obs.fall_at
             self._down_since = self._down_since if self._down_since is not None else obs.fall_at

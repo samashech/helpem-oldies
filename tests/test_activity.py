@@ -1,6 +1,6 @@
 import numpy as np
 
-from elder_help.activity import Activity, ActivityTracker, BedZone, classify_posture, find_held_object
+from elder_help.activity import Activity, ActivityTracker, BedZone, classify_posture, describe_view, find_held_object
 
 
 def body(joints, visibility=0.95):
@@ -75,6 +75,73 @@ def test_upper_body_only_camera():
     assert classify_posture(desk_view_lying())[0] is Activity.LYING
 
 
+def test_head_and_shoulders_at_a_desk_counts_as_sitting():
+    # Positions measured from a real laptop webcam.
+    desk = body({0: (358, 293), 11: (461, 418), 12: (205, 413)})
+    assert classify_posture(desk, frame_size=(640, 480))[0] is Activity.SITTING
+    assert describe_view(desk) == "head_and_shoulders"
+
+
+def test_small_or_high_upper_body_is_not_assumed_to_be_sitting():
+    far = body({0: (320, 90), 11: (300, 300), 12: (340, 300)})
+    assert classify_posture(far, frame_size=(640, 480))[0] is Activity.UPRIGHT
+    high = body({0: (320, 40), 11: (220, 150), 12: (420, 150)})
+    assert classify_posture(high, frame_size=(640, 480))[0] is Activity.UPRIGHT
+
+
+def test_describe_view():
+    assert describe_view(None) == "nobody"
+    assert describe_view(standing()) == "full_body"
+    assert describe_view(body({11: (300, 200), 12: (400, 200), 23: (320, 400), 24: (380, 400)})) == "upper_body"
+
+
+def desk(x=333.0, y=416.0):
+    return body({0: (x + 25, y - 123), 11: (x + 128, y + 2), 12: (x - 128, y - 3)})
+
+
+def test_moving_in_a_chair_is_never_walking():
+    tracker = ActivityTracker()
+    seen = set()
+    for i in range(150):
+        seen.add(tracker.update(desk(x=333 + 60 * np.sin(i / 3), y=400 + 20 * np.sin(i / 5)), i / 15, (640, 480)).activity)
+    assert seen == {Activity.SITTING}
+
+
+def test_label_does_not_flicker_on_brief_changes():
+    tracker = ActivityTracker()
+    labels = []
+    for i in range(1, 150):
+        frame = lying() if i % 20 == 0 else standing()
+        labels.append(tracker.update(frame, i / 15).activity)
+    assert set(labels) == {Activity.STANDING}
+
+
+def test_sliding_out_of_the_bottom_of_a_desk_view_is_a_possible_fall():
+    tracker = ActivityTracker()
+    t = 0.0
+    for _ in range(30):
+        tracker.update(desk(y=330), t, (640, 480))
+        t += 1 / 15
+    for k in range(8):
+        tracker.update(desk(y=330 + 15 * k), t, (640, 480))
+        t += 1 / 15
+    tracker.update(None, t, (640, 480))
+    obs = tracker.update(None, t + 3.5, (640, 480))
+    assert obs.activity is Activity.ABSENT and obs.fall_at is not None
+    back = tracker.update(desk(y=330), t + 5, (640, 480))
+    assert back.came_back and back.fall_at is None
+
+
+def test_leaving_sideways_or_upward_is_not_a_fall():
+    tracker = ActivityTracker()
+    t = 0.0
+    for k in range(30):
+        tracker.update(desk(x=200 + 5 * k, y=350 - 2 * k), t, (640, 480))
+        t += 1 / 15
+    tracker.update(None, t, (640, 480))
+    assert tracker.update(None, t + 3.5, (640, 480)).fall_at is None
+
+
 def test_low_visibility_counts_as_absent():
     assert classify_posture(standing() * np.array([1, 1, 0.1]))[0] is Activity.ABSENT
 
@@ -102,7 +169,7 @@ def test_sudden_drop_is_flagged_as_possible_fall():
     tracker = ActivityTracker()
     run_frames(tracker, [standing() for _ in range(30)])
     obs = None
-    for i, frame in enumerate([standing(y=40 * k) for k in range(1, 7)] + [lying()] * 15):
+    for i, frame in enumerate([standing(y=40 * k) for k in range(1, 7)] + [lying()] * 30):
         obs = tracker.update(frame, 2.0 + i / 15)
     assert obs.activity is Activity.LYING
     assert obs.fall_at is not None
@@ -112,10 +179,20 @@ def test_sudden_drop_from_a_chair_is_flagged():
     tracker = ActivityTracker()
     run_frames(tracker, [sitting() for _ in range(30)])
     obs = None
-    for i, frame in enumerate([lying()] * 15):
+    for i, frame in enumerate([lying()] * 30):
         obs = tracker.update(frame, 2.0 + i / 15)
     assert obs.activity is Activity.LYING
     assert obs.fall_at is not None
+
+
+def test_getting_straight_back_up_clears_a_possible_fall():
+    tracker = ActivityTracker()
+    run_frames(tracker, [standing() for _ in range(30)])
+    t = 2.0
+    for frame in [standing(y=40 * k) for k in range(1, 7)] + [standing()] * 90:
+        obs = tracker.update(frame, t)
+        t += 1 / 15
+    assert obs.activity is Activity.STANDING and obs.fall_at is None
 
 
 def test_slow_lying_down_is_not_a_fall_but_is_lying():

@@ -149,3 +149,10 @@ def test_retries_after_nobody_was_reached_sooner_than_after_someone_was():
     monitor.finish_checkin(Reply.SILENCE, 231)
     monitor.finish_escalation(True, 300)
     assert feed(monitor, LYING, 301, 1199)[0] is None
+
+
+def test_coming_back_into_view_cancels_a_possible_fall():
+    monitor = SafetyMonitor(CFG)
+    assert feed(monitor, Observation(Activity.ABSENT, fall_at=0.0), 0, 10)[0] is None
+    assert monitor.update(Observation(Activity.SITTING, came_back=True), 11) is None
+    assert feed(monitor, Observation(Activity.SITTING), 12, 100)[0] is None

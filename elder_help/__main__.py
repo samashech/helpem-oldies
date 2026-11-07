@@ -137,7 +137,7 @@ def _run(args: argparse.Namespace, config: Config) -> int:
     if config.listen_for_help_words and not args.no_audio:
         threading.Thread(target=app.listen_for_triggers, args=(voice.listener,), daemon=True).start()
 
-    vision = VisionPipeline(delegate=config.vision_delegate)
+    vision = VisionPipeline(delegate=config.vision_delegate, pose_model=config.pose_model)
     try:
         app.run(config.camera_index if live_camera else args.video, vision)
         app.wait_for_worker()
@@ -149,6 +149,25 @@ def _run(args: argparse.Namespace, config: Config) -> int:
         if server is not None:
             server.shutdown()
     return 0
+
+
+def _camera_check(args: argparse.Namespace, config: Config) -> int:
+    from .camera_check import run_check
+    from .vision import VisionPipeline, prefer_nvidia_gpu
+
+    if not config.monitored_person_consented:
+        print("Set monitored_person_consented = true in the config first.", file=sys.stderr)
+        return 2
+    if config.prefer_nvidia:
+        prefer_nvidia_gpu()
+    speak = None
+    if not args.quiet:
+        speak = Speaker(("en",), config.person_name, config.alerts.emergency_number).say_text
+    vision = VisionPipeline(delegate=config.vision_delegate, pose_model=config.pose_model)
+    try:
+        return run_check(config, vision, speak, args.seconds, Path(args.output), args.poses)
+    finally:
+        vision.close()
 
 
 def _doctor(config: Config) -> int:
@@ -204,6 +223,11 @@ def main() -> int:
     talk = commands.add_parser("talk", help="Talk to the assistant once")
     talk.add_argument("--text", action="store_true", help="Type instead of using the speaker and mic")
     talk.add_argument("--show-heard", action="store_true", help="Print what the speech models heard, without saving it")
+    check = commands.add_parser("camera-check", help="Speaks each pose and reports what the camera detected")
+    check.add_argument("--seconds", type=float, default=10, help="How long to measure each pose")
+    check.add_argument("--quiet", action="store_true", help="Print the poses instead of speaking them")
+    check.add_argument("--output", default="camera_check.json")
+    check.add_argument("--poses", nargs="*", help="Only these poses, for example: sit lie")
     hear = commands.add_parser("hear", help="Listen once and print how the reply was understood")
     hear.add_argument("--seconds", type=float, default=8)
     args = parser.parse_args()
@@ -219,6 +243,8 @@ def main() -> int:
         return _doctor(config)
     if args.command == "talk":
         return _talk(args, config)
+    if args.command == "camera-check":
+        return _camera_check(args, config)
     if args.command == "say":
         Speaker(config.languages, config.person_name, config.alerts.emergency_number).say("ask")
         return 0

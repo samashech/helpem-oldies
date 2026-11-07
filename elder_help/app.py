@@ -13,7 +13,7 @@ from typing import Callable
 import cv2
 import numpy as np
 
-from .activity import Activity, ActivityTracker, Observation, find_held_object
+from .activity import Activity, ActivityTracker, Observation, describe_view, find_held_object
 from .alerts import Gateway, call_emergency_services, escalate, notify
 from .assistant import Assistant, ChatClient, Confirmation, PlaceMemory, item_name
 from .config import Config
@@ -70,6 +70,7 @@ class App:
         self.latest_frame: np.ndarray | None = None
         self.stream_enabled = False
         self.camera_ok = True
+        self.view = "nobody"
         self.mic_paused = threading.Event()
         self.stop = threading.Event()
         self._worker: threading.Thread | None = None
@@ -106,6 +107,7 @@ class App:
             "phase": self.monitor.phase.value,
             "reason": self.monitor.reason.value if self.monitor.reason else None,
             "camera_ok": self.camera_ok,
+            "view": self.view,
             "alerts_live": not self.gateway.simulated,
             "events": list(self.events.recent),
         }
@@ -114,6 +116,7 @@ class App:
         held = find_held_object(points, detections) if points is not None else None
         obs = self.tracker.update(points, now, frame_size, held)
         self.observation = obs
+        self.view = describe_view(points)
         if obs.activity is not self._last_activity:
             self.events.write("activity", activity=obs.activity.value)
             self._last_activity = obs.activity
