@@ -1,0 +1,11 @@
+.venv/
+models/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Holds phone numbers and API credentials.
+config.toml
+# Event history about a real person.
+events.jsonl
+# Where a real person keeps their things.
+memory.json

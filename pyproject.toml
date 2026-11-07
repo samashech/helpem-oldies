@@ -1,0 +1,21 @@
+[project]
+name = "elder-help"
+version = "0.1.0"
+description = "Local camera safety companion for older adults, with Hindi and English voice check-ins."
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "mediapipe>=0.10.20",
+  "numpy",
+  "opencv-python-headless",
+  "piper-tts",
+  "vosk",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["elder_help"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

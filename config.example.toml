@@ -1,0 +1,65 @@
+# Copy to config.toml. That file is gitignored because it holds phone numbers and secrets.
+
+person_name = "Dadi ji"
+address = ""                      # Read out if 112 is called. Include landmarks and the floor.
+languages = ["hi", "en"]          # Spoken in this order on every check-in.
+
+# Live camera mode refuses to start until the monitored person has agreed.
+monitored_person_consented = false
+
+camera_index = 0
+vision_delegate = "GPU"           # Or "CPU".
+prefer_nvidia = true              # Set to false to save power on a laptop that stays on all day.
+listen_for_help_words = true      # Keeps the mic open; audio is processed locally and never saved.
+sleep_hours = [22, 7]             # Start and end hour, local time.
+
+# Areas where lying down is normal, as fractions of the camera frame (0 to 1).
+# [[bed_zones]]
+# x0 = 0.1
+# y0 = 0.4
+# x1 = 0.9
+# y1 = 1.0
+
+medicine_times = []               # For example ["09:00", "21:00"]. Reminders never mention doses.
+
+# Where things are kept, set up by the family. Saying a new place out loud replaces these.
+# [places.medicine]
+# hi = "रसोई की अलमारी में"
+# en = "in the kitchen cupboard"
+
+[[contacts]]
+name = "Rahul"
+phone = "+910000000000"
+aliases = ["राहुल", "बेटा", "son"]   # How they might say this name out loud.
+
+[alerts]
+live = false                      # false logs what would be sent. Nothing leaves the machine.
+twilio_account_sid = ""
+twilio_auth_token = ""
+twilio_from = ""
+# Dialled only after the person asks for it and confirms aloud.
+# Put your own phone number here while testing, and never test against the real 112.
+emergency_number = "112"
+call_rounds = 2
+
+# All timings are in seconds. These are starting values and have not been validated in the field.
+[safety]
+lying_grace_s = 20
+fall_grace_s = 5
+fall_absent_grace_s = 15
+bed_grace_s = 1800
+recheck_s = 600                   # Ask again this often while they are still lying down.
+wellness_interval_s = 10800       # Routine check-in while awake.
+recovered_s = 5
+reached_cooldown_s = 900
+unreached_cooldown_s = 120
+camera_fault_s = 60
+
+[voice]
+ask_attempts = 3
+listen_s = 12
+
+# Free conversation through a local Ollama model. Without it, requests still work but chat does not.
+[chat]
+enabled = true
+model = "gemma3:4b"
